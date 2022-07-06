@@ -6,11 +6,29 @@ enum CashFlowType: String {
     case moneyOut = "Money Out"
 }
 
+struct CashFlowSeries {
+    var weekToDate: [CashFlowDay]
+    var monthToDate: [CashFlowDay]
+    
+    static let placeholders: CashFlowSeries = .init(
+        weekToDate: CashFlowDay.placeholderData,
+        monthToDate: CashFlowDay.placeholderData
+    )
+}
+
 struct CashFlowDay: Identifiable, Equatable {
     var type: CashFlowType
     var label: String
     var value: Double
-    var id = UUID()
+    var id: String
+    
+    
+    init(type: CashFlowType, label: String, value: Double) {
+        self.type = type
+        self.label = label
+        self.value = value
+        self.id = label + type.rawValue
+    }
     
     static let placeholderData: [CashFlowDay] = [
         .init(type: .moneyOut, label: "Monday", value: 2),
@@ -31,17 +49,20 @@ enum LoadingState<T> {
     case loading(placeholder: T)
     case loaded(content: T)
     
-//    func isLoading() -> Bool {
-//        return (self == .loading)
-//    }
+    func isLoading() -> Bool {
+        if case .loading(placeholder: _) = self {
+            return true
+        }
+        return false
+    }
 }
 
 @MainActor
 final class CashFlowGraphViewModel: ObservableObject {
-    @Published var cashFlowGraphData: [CashFlowDay] = []
-    @Published var state: LoadingState<[CashFlowDay]> = .idle
+    @Published var cashFlowGraphData: CashFlowSeries = .placeholders
+    @Published var state: LoadingState<CashFlowSeries> = .idle
     
-    private let cashFlowInData: [CashFlowDay] = [
+    private let weekCashFlowInData: [CashFlowDay] = [
         .init(type: .moneyIn, label: "Monday", value: 1),
         .init(type: .moneyIn, label: "Tuesday", value: 0.3),
         .init(type: .moneyIn, label: "Wednesday", value: 1),
@@ -49,7 +70,7 @@ final class CashFlowGraphViewModel: ObservableObject {
         .init(type: .moneyIn, label: "Friday", value: 2)
     ]
     
-    private let cashFlowOutData: [CashFlowDay] = [
+    private let weekCashFlowOutData: [CashFlowDay] = [
         .init(type: .moneyOut, label: "Monday", value: 0.2),
         .init(type: .moneyOut, label: "Tuesday", value: 0.9),
         .init(type: .moneyOut, label: "Wednesday", value: 1),
@@ -57,23 +78,54 @@ final class CashFlowGraphViewModel: ObservableObject {
         .init(type: .moneyOut, label: "Friday", value: 0.6)
     ]
     
+    private let monthCashFlowInData: [CashFlowDay] = [
+        .init(type: .moneyIn, label: "Monday", value: 5),
+        .init(type: .moneyIn, label: "Tuesday", value: 1.3),
+        .init(type: .moneyIn, label: "Wednesday", value: 6),
+        .init(type: .moneyIn, label: "Thursday", value: 0.7),
+        .init(type: .moneyIn, label: "Friday", value: 1)
+    ]
+    
+    private let monthCashFlowOutData: [CashFlowDay] = [
+        .init(type: .moneyOut, label: "Monday", value: 3.2),
+        .init(type: .moneyOut, label: "Tuesday", value: 5.9),
+        .init(type: .moneyOut, label: "Wednesday", value: 4),
+        .init(type: .moneyOut, label: "Thursday", value: 1),
+        .init(type: .moneyOut, label: "Friday", value: 1.3)
+    ]
+    
     func buildCashFlowGraphData() async {
-        state = .loading(placeholder: CashFlowDay.placeholderData)
+        state = .loading(placeholder: CashFlowSeries.placeholders)
         
-        try! await Task.sleep(nanoseconds: 3_000_000_000)
+        if state.isLoading() {
+            print("Holup")
+        }
+        
+//        self.cashFlowGraphData = CashFlowDay.placeholderData
+        
+        try! await Task.sleep(nanoseconds: 2_000_000_000)
 
-        self.cashFlowGraphData = cashFlowOutData + cashFlowInData
+        let weekToDate =  weekCashFlowOutData + weekCashFlowInData
+        let monthToDate = monthCashFlowOutData + monthCashFlowInData
         
-        state = .loaded(content: self.cashFlowGraphData)
+        
+        self.cashFlowGraphData = .init(weekToDate: weekToDate, monthToDate: monthToDate)
+        
+        withAnimation(.easeIn) {
+            state = .loaded(content: self.cashFlowGraphData)
+        }
     }
 }
 
-struct ContentView: View {
-    @Namespace private var animation
+enum ReportPeriod: String {
+    case week
+    case month
+}
 
-    @ObservedObject var viewModel = CashFlowGraphViewModel()
+struct ContentView: View {
+    @State var selectedReportPeriod: ReportPeriod = .week
     
-    @State var graphData: [CashFlowDay] = []
+    @ObservedObject var viewModel = CashFlowGraphViewModel()
     
     var body: some View {
         VStack {
@@ -81,35 +133,39 @@ struct ContentView: View {
                 .frame(height: 200)
             
             Text("Cash In & Out")
+                .font(.largeTitle)
             
             switch viewModel.state {
             case .idle:
                 EmptyView()
-                
+
             case let .loading(placeholder):
-                CashFlowGraph(cashFlowGraphData: placeholder)
+                CashFlowGraph(cashFlowGraphData: placeholder.weekToDate)
                     .redacted(reason: .placeholder)
                     .chartForegroundStyleScale([
                         CashFlowType.moneyIn.rawValue: .black,
                         CashFlowType.moneyOut.rawValue: .gray,
                     ])
-                    .matchedGeometryEffect(id: "Graph", in: animation)
-//                    .onAppear {
-//                        let baseAnimation = Animation.easeInOut(duration: 3)
-//
-//                        withAnimation(baseAnimation) {
-//                            $viewModel.state
-//                        }
-//                    }
-                
+//                    .matchedGeometryEffect(id: "Graph", in: animation)
+
             case let .loaded(content):
-                CashFlowGraph(cashFlowGraphData: content)
+                
+                CashFlowGraph(cashFlowGraphData: selectedReportPeriod == .week
+                              ? content.weekToDate
+                              : content.monthToDate
+                )
                     .chartForegroundStyleScale([
-                        CashFlowType.moneyIn.rawValue: .green,
-                        CashFlowType.moneyOut.rawValue: .red,
+                        CashFlowType.moneyIn.rawValue: .purple,
+                        CashFlowType.moneyOut.rawValue: .orange,
                     ])
-                    .matchedGeometryEffect(id: "Graph", in: animation)
+//                    .matchedGeometryEffect(id: "Graph", in: animation)
             }
+            
+            Picker("Date Range", selection: $selectedReportPeriod.animation(.easeInOut)) {
+                Text("Week to Date").tag(ReportPeriod.week)
+                Text("Month to Date").tag(ReportPeriod.month)
+            }
+            .pickerStyle(.segmented)
         }
         .task {
             await viewModel.buildCashFlowGraphData()
@@ -118,28 +174,36 @@ struct ContentView: View {
     }
 }
 
-struct CashFlowGraph: View {
-    @State var cashFlowGraphData: [CashFlowDay]
+struct AnnotationView: View {
+    let entry: CashFlowDay
     
     var body: some View {
-        Chart(cashFlowGraphData) {
+//        let idx = Workout.workouts.firstIndex(where: {$0.id == workout.id}) ?? 0
+        return VStack(spacing: 0) {
+            Text("$\(entry.value)")
+            Image(systemName: "figure.stand")
+        }
+        .font(.caption)
+//        .foregroundStyle(Constants.markColors[idx])
+    }
+}
+
+struct CashFlowGraph: View {
+    var cashFlowGraphData: [CashFlowDay]
+    
+    var body: some View {
+        Chart(cashFlowGraphData) { entry in
             BarMark(
-                x: .value("Day", $0.label),
-                y: .value("Cash Out", $0.value)
+                x: .value("Day", entry.label),
+                y: .value("Cash Out", entry.value)
             )
-            .foregroundStyle(by: .value("Cash Flow Type", $0.type.rawValue))
+            .annotation(position: .top) {
+                if entry.type == .moneyIn {
+                    AnnotationView(entry: entry)
+                }
+            }
+            .foregroundStyle(by: .value("Cash Flow Type", entry.type.rawValue))
         }
-        .onAppear {
-            withAnimation() {}
-        }
-//        .animation(.easeInOut(duration: 0.5))
-//        .transition(
-////            .move(edge: .bottom)
-//            .slide
-////            .scale
-//            .combined(with: .opacity)
-//            .animation(.easeInOut(duration: 0.5))
-//        )
     }
 }
 
