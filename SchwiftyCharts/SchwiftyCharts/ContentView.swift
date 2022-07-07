@@ -21,13 +21,23 @@ struct CashFlowDay: Identifiable, Equatable {
     var label: String
     var value: Double
     var id: String
+    var cashIn: Double = 0.0
+    var cashOut: Double = 0.0
     
     
-    init(type: CashFlowType, label: String, value: Double) {
+    init(
+        type: CashFlowType,
+        label: String,
+        value: Double,
+        cashIn: Double = 45,
+        cashOut: Double = 2
+    ) {
         self.type = type
         self.label = label
         self.value = value
         self.id = label + type.rawValue
+        self.cashIn = cashIn
+        self.cashOut = cashOut
     }
     
     static let placeholderData: [CashFlowDay] = [
@@ -63,7 +73,7 @@ final class CashFlowGraphViewModel: ObservableObject {
     @Published var state: LoadingState<CashFlowSeries> = .idle
     
     private let weekCashFlowInData: [CashFlowDay] = [
-        .init(type: .moneyIn, label: "Monday", value: 1),
+//        .init(type: .moneyIn, label: "Monday", value: 1),
         .init(type: .moneyIn, label: "Tuesday", value: 0.3),
         .init(type: .moneyIn, label: "Wednesday", value: 1),
         .init(type: .moneyIn, label: "Thursday", value: 0.2),
@@ -105,8 +115,8 @@ final class CashFlowGraphViewModel: ObservableObject {
         
         try! await Task.sleep(nanoseconds: 2_000_000_000)
 
-        let weekToDate =  weekCashFlowOutData + weekCashFlowInData
-        let monthToDate = monthCashFlowOutData + monthCashFlowInData
+        let weekToDate =  weekCashFlowOutData
+        let monthToDate = monthCashFlowOutData
         
         
         self.cashFlowGraphData = .init(weekToDate: weekToDate, monthToDate: monthToDate)
@@ -130,10 +140,13 @@ struct ContentView: View {
     var body: some View {
         VStack {
             Spacer()
-                .frame(height: 200)
+                .frame(height: 100)
             
             Text("Cash In & Out")
                 .font(.largeTitle)
+            
+            Spacer()
+                .frame(height: 40)
             
             switch viewModel.state {
             case .idle:
@@ -174,22 +187,13 @@ struct ContentView: View {
     }
 }
 
-struct AnnotationView: View {
-    let entry: CashFlowDay
-    
-    var body: some View {
-//        let idx = Workout.workouts.firstIndex(where: {$0.id == workout.id}) ?? 0
-        return VStack(spacing: 0) {
-            Text("$\(entry.value)")
-            Image(systemName: "figure.stand")
-        }
-        .font(.caption)
-//        .foregroundStyle(Constants.markColors[idx])
-    }
-}
-
 struct CashFlowGraph: View {
     var cashFlowGraphData: [CashFlowDay]
+    @State var isPresented: Bool = false
+    
+    @State var tapCoords: CGPoint = CGPoint()
+    
+    @State var selectedElement: String = ""
     
     var body: some View {
         Chart(cashFlowGraphData) { entry in
@@ -197,12 +201,60 @@ struct CashFlowGraph: View {
                 x: .value("Day", entry.label),
                 y: .value("Cash Out", entry.value)
             )
-            .annotation(position: .top) {
-                if entry.type == .moneyIn {
-                    AnnotationView(entry: entry)
+            .foregroundStyle(by: .value("Cash Flow Type", entry.type.rawValue))
+        }
+        .chartBackground { chart in
+            GeometryReader { geo in
+                let lineHeight = geo[chart.plotAreaFrame].maxY
+                
+                let popoverStartPosition = chart.position(forX: selectedElement) ?? 0
+                
+                ZStack {
+                    Rectangle()
+                        .fill(.quaternary)
+                        .frame(width: 2, height: lineHeight)
+                        .position(x: popoverStartPosition, y: lineHeight / 2)
+                    
+                    if isPresented {
+//                        Rectangle()
+//                            .fill(.red)
+                    }
                 }
             }
-            .foregroundStyle(by: .value("Cash Flow Type", entry.type.rawValue))
+        }
+        .chartOverlay{ proxy in
+            GeometryReader { geo in
+                Rectangle()
+                .fill(.clear)
+                .contentShape(Rectangle())
+                .onTapGesture { tapLocation in
+                    self.selectedElement = findElement(
+                        geometry: geo,
+                        chart: proxy,
+                        location: tapLocation
+                    )
+                    
+                    self.isPresented.toggle()
+                }
+            }
+        }
+    }
+    
+    func findElement(
+        geometry: GeometryProxy,
+        chart: ChartProxy,
+        location: CGPoint
+    ) -> String {
+        if let bar: String = chart.value(atX: location.x) {
+            print(bar)
+            
+            let matched = cashFlowGraphData.compactMap { entry in
+                entry.label == bar
+            }
+            
+            return bar
+        } else {
+            return ""
         }
     }
 }
