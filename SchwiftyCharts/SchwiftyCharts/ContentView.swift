@@ -6,52 +6,50 @@ enum CashFlowType: String {
     case moneyOut = "Money Out"
 }
 
+enum Days: String, CaseIterable {
+    case monday = "Monday"
+    case tuesday = "Tuesday"
+    case wednesday = "Wednesday"
+    case thursday = "Thursday"
+    case friday = "Friday"
+}
+
 struct CashFlowSeries {
     var weekToDate: [CashFlowDay]
     var monthToDate: [CashFlowDay]
     
     static let placeholders: CashFlowSeries = .init(
-        weekToDate: CashFlowDay.placeholderData,
-        monthToDate: CashFlowDay.placeholderData
+        weekToDate: CashFlowDay.getPlaceholders(),
+        monthToDate: CashFlowDay.getPlaceholders()
     )
 }
 
 struct CashFlowDay: Identifiable, Equatable {
-    var type: CashFlowType
     var label: String
-    var value: Double
     var id: String
-    var cashIn: Double = 0.0
-    var cashOut: Double = 0.0
-    
+    var cashIn: Double
+    var cashOut: Double
     
     init(
-        type: CashFlowType,
         label: String,
-        value: Double,
-        cashIn: Double = 45,
-        cashOut: Double = 2
+        cashIn: Double,
+        cashOut: Double
     ) {
-        self.type = type
         self.label = label
-        self.value = value
-        self.id = label + type.rawValue
+        self.id = label
         self.cashIn = cashIn
         self.cashOut = cashOut
     }
     
-    static let placeholderData: [CashFlowDay] = [
-        .init(type: .moneyOut, label: "Monday", value: 2),
-        .init(type: .moneyOut, label: "Tuesday", value: 4),
-        .init(type: .moneyOut, label: "Wednesday", value: 1),
-        .init(type: .moneyOut, label: "Thursday", value: 0.5),
-        .init(type: .moneyOut, label: "Friday", value: 1.9),
-        .init(type: .moneyIn, label: "Monday", value: 5),
-        .init(type: .moneyIn, label: "Tuesday", value: 7),
-        .init(type: .moneyIn, label: "Wednesday", value: 2),
-        .init(type: .moneyIn, label: "Thursday", value: 2.5),
-        .init(type: .moneyIn, label: "Friday", value: 2.9)
-    ]
+    static func getPlaceholders() -> [CashFlowDay] {
+        Days.allCases.map { day in
+            CashFlowDay(
+                label: day.rawValue,
+                cashIn: Double.random(in: 0...150),
+                cashOut: Double.random(in: 0...150)
+            )
+        }
+    }
 }
 
 enum LoadingState<T> {
@@ -72,38 +70,6 @@ final class CashFlowGraphViewModel: ObservableObject {
     @Published var cashFlowGraphData: CashFlowSeries = .placeholders
     @Published var state: LoadingState<CashFlowSeries> = .idle
     
-    private let weekCashFlowInData: [CashFlowDay] = [
-//        .init(type: .moneyIn, label: "Monday", value: 1),
-        .init(type: .moneyIn, label: "Tuesday", value: 0.3),
-        .init(type: .moneyIn, label: "Wednesday", value: 1),
-        .init(type: .moneyIn, label: "Thursday", value: 0.2),
-        .init(type: .moneyIn, label: "Friday", value: 2)
-    ]
-    
-    private let weekCashFlowOutData: [CashFlowDay] = [
-        .init(type: .moneyOut, label: "Monday", value: 0.2),
-        .init(type: .moneyOut, label: "Tuesday", value: 0.9),
-        .init(type: .moneyOut, label: "Wednesday", value: 1),
-        .init(type: .moneyOut, label: "Thursday", value: 1),
-        .init(type: .moneyOut, label: "Friday", value: 0.6)
-    ]
-    
-    private let monthCashFlowInData: [CashFlowDay] = [
-        .init(type: .moneyIn, label: "Monday", value: 5),
-        .init(type: .moneyIn, label: "Tuesday", value: 1.3),
-        .init(type: .moneyIn, label: "Wednesday", value: 6),
-        .init(type: .moneyIn, label: "Thursday", value: 0.7),
-        .init(type: .moneyIn, label: "Friday", value: 1)
-    ]
-    
-    private let monthCashFlowOutData: [CashFlowDay] = [
-        .init(type: .moneyOut, label: "Monday", value: 3.2),
-        .init(type: .moneyOut, label: "Tuesday", value: 5.9),
-        .init(type: .moneyOut, label: "Wednesday", value: 4),
-        .init(type: .moneyOut, label: "Thursday", value: 1),
-        .init(type: .moneyOut, label: "Friday", value: 1.3)
-    ]
-    
     func buildCashFlowGraphData() async {
         state = .loading(placeholder: CashFlowSeries.placeholders)
         
@@ -111,13 +77,12 @@ final class CashFlowGraphViewModel: ObservableObject {
             print("Holup")
         }
         
-//        self.cashFlowGraphData = CashFlowDay.placeholderData
+        //        self.cashFlowGraphData = CashFlowDay.placeholderData
         
         try! await Task.sleep(nanoseconds: 2_000_000_000)
-
-        let weekToDate =  weekCashFlowOutData
-        let monthToDate = monthCashFlowOutData
         
+        let weekToDate =  CashFlowDay.getPlaceholders()
+        let monthToDate = CashFlowDay.getPlaceholders()
         
         self.cashFlowGraphData = .init(weekToDate: weekToDate, monthToDate: monthToDate)
         
@@ -151,7 +116,7 @@ struct ContentView: View {
             switch viewModel.state {
             case .idle:
                 EmptyView()
-
+                
             case let .loading(placeholder):
                 CashFlowGraph(cashFlowGraphData: placeholder.weekToDate)
                     .redacted(reason: .placeholder)
@@ -159,19 +124,19 @@ struct ContentView: View {
                         CashFlowType.moneyIn.rawValue: .black,
                         CashFlowType.moneyOut.rawValue: .gray,
                     ])
-//                    .matchedGeometryEffect(id: "Graph", in: animation)
-
+                //                    .matchedGeometryEffect(id: "Graph", in: animation)
+                
             case let .loaded(content):
                 
                 CashFlowGraph(cashFlowGraphData: selectedReportPeriod == .week
                               ? content.weekToDate
                               : content.monthToDate
                 )
-                    .chartForegroundStyleScale([
-                        CashFlowType.moneyIn.rawValue: .purple,
-                        CashFlowType.moneyOut.rawValue: .orange,
-                    ])
-//                    .matchedGeometryEffect(id: "Graph", in: animation)
+                .chartForegroundStyleScale([
+                    CashFlowType.moneyIn.rawValue: .purple,
+                    CashFlowType.moneyOut.rawValue: .orange,
+                ])
+                //                    .matchedGeometryEffect(id: "Graph", in: animation)
             }
             
             Picker("Date Range", selection: $selectedReportPeriod.animation(.easeInOut)) {
@@ -193,31 +158,66 @@ struct CashFlowGraph: View {
     
     @State var tapCoords: CGPoint = CGPoint()
     
-    @State var selectedElement: String = ""
+    @State var selectedElement: CashFlowDay = .init(label: "Dafault", cashIn: 0, cashOut: 0)
     
     var body: some View {
         Chart(cashFlowGraphData) { entry in
             BarMark(
                 x: .value("Day", entry.label),
-                y: .value("Cash Out", entry.value)
+                y: .value("Cash Flow", entry.cashOut)
             )
-            .foregroundStyle(by: .value("Cash Flow Type", entry.type.rawValue))
+            .foregroundStyle(by: .value("Cash Flow Type", CashFlowType.moneyOut.rawValue))
+            
+            BarMark(
+                x: .value("Day", entry.label),
+                y: .value("Cash Flow", entry.cashIn)
+            )
+            .foregroundStyle(by: .value("Cash Flow Type", CashFlowType.moneyIn.rawValue))
         }
         .chartBackground { chart in
             GeometryReader { geo in
                 let lineHeight = geo[chart.plotAreaFrame].maxY
                 
-                let popoverStartPosition = chart.position(forX: selectedElement) ?? 0
+                // get x value for selected element
+                let barMarkCenter = chart.position(forX: selectedElement.label) ?? 0
                 
-                ZStack {
-                    Rectangle()
-                        .fill(.quaternary)
-                        .frame(width: 2, height: lineHeight)
-                        .position(x: popoverStartPosition, y: lineHeight / 2)
-                    
-                    if isPresented {
-//                        Rectangle()
-//                            .fill(.red)
+                // offset by chart frame
+                let startPositionX = barMarkCenter + geo[chart.plotAreaFrame].origin.x
+                
+                let boxWidth: CGFloat = 200
+                
+                let popoverPosition = max(0, min(geo.size.width - boxWidth, startPositionX - boxWidth / 2))
+                
+                if isPresented {
+                    ZStack(alignment: .topLeading) {
+                        Rectangle()
+                            .fill(.quaternary)
+                            .frame(width: 2, height: lineHeight)
+                            .position(x: barMarkCenter, y: lineHeight / 2)
+                        
+                        VStack(alignment: .leading) {
+                            Text("\(selectedElement.label)")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            Text("Cash Out: \(selectedElement.cashOut, format: .currency(code: "NZD"))")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.primary)
+                            Text("Cash In: \(selectedElement.cashIn, format: .currency(code: "NZD"))")
+                                .font(.subheadline.bold())
+                                .foregroundColor(.primary)
+                        }
+                        .padding(10)
+                        .frame(width: boxWidth)
+                        .background { // some styling
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(.background)
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(.quaternary.opacity(0.7))
+                            }
+                            .padding([.leading, .trailing], 5)
+                        }
+                        .offset(x: popoverPosition)
                     }
                 }
             }
@@ -225,17 +225,32 @@ struct CashFlowGraph: View {
         .chartOverlay{ proxy in
             GeometryReader { geo in
                 Rectangle()
-                .fill(.clear)
-                .contentShape(Rectangle())
-                .onTapGesture { tapLocation in
-                    self.selectedElement = findElement(
-                        geometry: geo,
-                        chart: proxy,
-                        location: tapLocation
-                    )
-                    
-                    self.isPresented.toggle()
-                }
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    .onTapGesture { tapLocation in
+                        
+                        // maybe View with generic closure returning element?
+                        
+                        if let element = findElement(
+                            geometry: geo,
+                            chart: proxy,
+                            location: tapLocation
+                        ) {
+                            // if clicked the same element
+                            if element == selectedElement {
+                                // hide element
+                                withAnimation(.easeInOut) {
+                                    self.isPresented.toggle()
+                                }
+                            } else {
+                                // always display popover if tapping between elements
+                                withAnimation(.easeInOut) {
+                                    self.isPresented = true
+                                    self.selectedElement = element
+                                }
+                            }
+                        }
+                    }
             }
         }
     }
@@ -244,17 +259,13 @@ struct CashFlowGraph: View {
         geometry: GeometryProxy,
         chart: ChartProxy,
         location: CGPoint
-    ) -> String {
-        if let bar: String = chart.value(atX: location.x) {
-            print(bar)
-            
-            let matched = cashFlowGraphData.compactMap { entry in
-                entry.label == bar
-            }
-            
-            return bar
+    ) -> CashFlowDay? {
+        let relativeXPosition = location.x - geometry[chart.plotAreaFrame].origin.x
+        
+        if let xValue: String = chart.value(atX: relativeXPosition) {
+            return cashFlowGraphData.first(where: { $0.label == xValue })
         } else {
-            return ""
+            return nil
         }
     }
 }
